@@ -3,7 +3,7 @@ resource "multipass_instance" "master_node" {
   cpus   = 2
   memory = "1G"
   disk   = "4G"
-#   image  = "20.04"  #latest
+#   image  = "20.04"  #latest 
 }
 
 # output "master_node_ip" {
