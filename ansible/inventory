@@ -1,2 +1,8 @@
 [my_machine]
 localhost
+
+[master]
+10.205.52.22
+
+[worker]
+10.205.52.240
