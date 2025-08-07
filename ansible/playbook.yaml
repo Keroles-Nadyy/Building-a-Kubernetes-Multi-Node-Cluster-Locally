@@ -1,49 +1,91 @@
-- name: Install pre-requisites tools
-  hosts: my_machine
+- name: Install prerequisites tools
+  hosts: K8s_cluster_nodes
+  gather_facts: true
   become: true
+  become_method: sudo
   connection: local
   tasks:
-    - name: update APT Package
-      ansible.builtin.apt:
+    - name: Update APT Package
+      apt:
         name: "*"
-        state: latest
-        update_cache: yes
+        # state: latest
+        update_cache: true
 
     - name: Install required packages
       ansible.builtin.apt:
         name:
+          - curl
           - wget
           - gnupg
+          - apt-transport-https
+          - ca-certificates
           - software-properties-common
         state: present
 
-    - name: Add HashiCorp GPG key
-      apt_key:
-        url: https://apt.releases.hashicorp.com/gpg
-        state: present
-        keyring: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+- name: Installing K8s Cluster tools and prerequisites
+  hosts: K8s_cluster_nodes
+  become: true
+  connection: local
+  gather_facts: false
+  roles:
+    - containerd_installation
+    - k8s_core_tools_installation
 
-    - name: Add HashiCorp APT repository
-      apt_repository:
-        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
-        state: present
-        filename: hashicorp.list
+- name: Configure controlplane
+  hosts: master_nodes
+  become: true
+  connection: local
+  roles:
+    - k8s_controlPlane_Configuration
 
-    - name: Install Terraform
-      ansible.builtin.apt:
-        name: terraform
-        state: present
-        update_cache: yes
+# - name: Join the Cluster
+#   become: true
+#   connection: local
+#   block:
+#     - name: Get the join command
+#       hosts: controlplane
+#       command: kubeadm token create --print-join-command
+#       register: controlplane_join_command
 
-    - name: Install kubectl
-      snap:
-        name: kubectl
-        classic: yes
-        state: present
+#     - name: Extract major.minor version from full version 
+#       set_fact:
+#         JOIN_COMMAND: "{{ controlplane_join_command.stdout }}"
 
-    - name: Install Multipass
-      community.general.snap:
-        name: multipass
-        state: present
-    
+#     - name: Join workers
+#       hosts: workers
+#       become: true
+#       shell: "{{ hostvars['controlplane']['JOIN_COMMAND'] }}"
 
+- name: Join the Cluster
+  hosts: master_nodes
+  become: true
+  connection: local
+  tasks:
+    - name: Get the join command
+      command: kubeadm token create --print-join-command
+      register: controlplane_join_command
+
+    - name: Extract join command as fact
+      set_fact:
+        JOIN_COMMAND: "{{ controlplane_join_command.stdout }}"
+
+- name: Join workers
+  hosts: worker_nodes
+  become: true
+  tasks: 
+    - name: Join the cluster
+      shell: "{{ hostvars['controlplane']['JOIN_COMMAND'] }}"
+
+- name: verify installation
+  hosts: master_nodes
+  become: true
+  connection: local
+  tasks:
+    - name: Get nodes in cluster
+      kubernetes.core.k8s_info:
+        kind: Node
+      register: cluster_nodes_info
+
+    - name: Print the cluster nodes
+      debug:
+        var: cluster_nodes_info.resources

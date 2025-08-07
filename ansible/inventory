@@ -1,8 +1,12 @@
 [my_machine]
 localhost
 
-[master]
-10.205.52.22
+[master_nodes]
+10.205.52.138
 
-[worker]
-10.205.52.240
+[worker_nodes]
+10.205.52.47
+
+[K8s_cluster_nodes:children]
+master_nodes
+worker_nodes
