@@ -3,7 +3,9 @@ resource "multipass_instance" "master_node" {
   cpus   = 2
   memory = "1G"
   disk   = "4G"
-#   image  = "20.04"  #latest 
+#   image  = "20.04"  #latest cloud_init = <<-EOF
+
+  # cloudinit_file = "./instances_cloud-init.yaml"
 }
 
 # output "master_node_ip" {
@@ -15,8 +17,5 @@ resource "multipass_instance" "worker_node" {
   cpus   = 2
   memory = "512M"
   disk   = "4G"
+  # cloudinit_file = "./instances_cloud-init.yaml"
 }
-
-# output "worker_node_ip" {
-#   value = multipass_instance.worker_node.ipv4
-# }
