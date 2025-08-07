@@ -1,0 +1,67 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for roles/k8s_controlPlane_Configuration
+# - name: Debug pod_cidr
+#   debug:
+#     msg: "pod_cidr = {{ pod_cidr }}"
+
+# - name: Debug service_cidr
+#   debug:
+#     msg: "pod_cidr = {{ service_cidr }}"
+
+- name: Get the node IP
+  shell: (hostname -I | awk '{print $1}')
+  register: NODE_PRIMARY_IP
+
+- name: Start controlplane
+  command: kubeadm init --pod-network-cidr {{ pod_cidr }} --service-cidr {{ service_cidr }} --apiserver-advertise-address {{ NODE_PRIMARY_IP.stdout }}
+  register: kubeadm_output
+
+- name: Set up kubectl config
+  become: true
+  block:
+    - name: Create .kube directory
+      file:
+        path: "{{ ansible_env.HOME }}/.kube"
+        state: directory
+        mode: '0755'
+
+    - name: Copy admin.conf to user's kube config
+      become: true
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ ansible_env.HOME }}/.kube/config"
+        remote_src: true
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+        mode: '0600'
+
+- name: Install Calico CNI for cluster networking
+  become: true
+  block:
+    - name: Install the Tigera operator and custom resource definitions.
+      command: |
+        kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.30.1/manifests/tigera-operator.yaml
+    - name: Calico custom-resources
+      command: |
+        curl -LO https://raw.githubusercontent.com/projectcalico/calico/v3.30.1/manifests/custom-resources.yaml
+    - name: Replace default pod CIDR in Calico custom-resources.yaml
+      replace:
+        path: /tmp/custom-resources.yaml
+        regexp: '192\.168\.0\.0/16'
+        replace: '{{ pod_cidr }}'
+    - name: Apply the edited manifest
+      shell: |
+        kubectl apply -f custom-resources.yaml
+
+- name: verify installation
+  block:
+    - name: Get pods in kube-system namespace
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: kube-system
+      register: kube_system_pods
+
+    - name: Print kube-system pods
+      debug:
+        var: kube_system_pods.resources
